@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sürükle Bırak Anagram Etkinliği (Güncel)</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(180deg,#f3f6fb 0%,#ffffff 100%);
+      display:flex;align-items:center;justify-content:center;padding:18px;min-height:100vh;color:#222;
+    }
+    .card{background:#fff;width:100%;max-width:760px;border-radius:14px;box-shadow:0 12px 30px rgba(20,30,50,.08);padding:18px;}
+    .header{background:linear-gradient(90deg,#00c2ff,#0066ff);color:#fff;padding:12px;border-radius:10px;font-weight:700;text-align:center;margin-bottom:12px}
+    .lead{margin:12px 0;line-height:1.45}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+    .btn{border:0;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:700}
+    .btn.start{background:#10b981;color:#fff}
+    .btn.restart{background:#f59e0b;color:#fff}
+    .btn.share{background:#1da1f2;color:#fff}
+    .btn.pass{background:#dc3545;color:#fff}
+    .status{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+    #timer{font-size:1.6rem;font-weight:800;color:#d97706}
+    .pass-info{background:#fff3cd;color:#6b4b00;padding:6px 10px;border-radius:12px;display:inline-block;font-weight:700}
+    .hint{background:#f1f5f9;padding:10px;border-radius:10px;font-style:italic;margin-bottom:10px}
+    .progress{height:8px;background:#e6edf6;border-radius:999px;overflow:hidden;width:100%;margin-bottom:12px}
+    .progress-bar{height:100%;background:linear-gradient(90deg,#34d399,#10b981);width:100%;transition:width .35s linear}
+    .letters-wrap{overflow:hidden;border-radius:12px;padding:10px;background:#fbfdff;border:2px dashed #dbeafe}
+    .letters{display:flex;gap:10px;align-items:center;justify-content:flex-start;white-space:nowrap;overflow-x:hidden;padding:6px;transition:transform .15s ease}
+    .letter{--size:56px;width:var(--size);height:var(--size);line-height:var(--size);border-radius:10px;background:#3b82f6;color:#fff;font-weight:800;font-size:1.15rem;text-align:center;user-select:none;cursor:grab;box-shadow:0 6px 12px rgba(10,20,40,.12);flex:0 0 auto;transition:transform .12s ease,background .18s ease}
+    .letter:active{cursor:grabbing;transform:scale(1.05);z-index:50}
+    .letter.drag-over{background:#60a5fa;transform:scale(1.05)}
+    .letter.correct{background:#10b981!important;animation:pop .45s}
+    @keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.18)}100%{transform:scale(1)}}
+    .result{padding:10px;line-height:1.6}
+    .hidden{display:none!important}
+    @media(max-width:480px){.letter{--size:44px;font-size:1rem}.card{padding:12px}.header{font-size:1.05rem;padding:10px}}
+    table.score-table{width:100%;border-collapse:collapse;margin-top:8px}
+    table.score-table th, table.score-table td{padding:6px 8px;border:1px solid #e6eef7;text-align:left;font-size:.95rem}
+    table.score-table th{background:#f8fbff;font-weight:700}
+  </style>
+</head>
+<body>
+
+<div class="card" id="intro">
+  <div class="header">Sürükle Bırak Anagram Etkinliği</div>
+  <p class="lead">
+    Harfleri sırala, kavramları yakala, puanları topla! 
+	<br>Her kavram için <strong>15 saniyen</strong> var.
+    <br>2 pas hakkın var. Ama unutma her pas <strong>-20 puan</strong>
+	<br>Zamana karşı yarış olan bu oyunda hızlı olan kazanır.</strong>
+  </p>
+  <div class="controls" style="justify-content:center">
+    <button class="btn start" id="startBtn" aria-label="Oyunu başlat">BAŞLA</button>
+  </div>
+</div>
+
+<div class="card hidden" id="game">
+  <div class="status">
+    <div>Süre: <div id="timer" aria-live="polite">15</div></div>
+    <div><div id="counter">1/9</div></div>
+    <div><span class="pass-info" id="passInfo">Pas: 2</span></div>
+  </div>
+
+  <div class="hint" id="hint" aria-live="polite">İpucu burada görünecek</div>
+
+  <div class="progress" aria-hidden="true"><div class="progress-bar" id="progress"></div></div>
+
+  <div class="letters-wrap" aria-label="Harfler bölgesi">
+    <div class="letters" id="letters" role="list"></div>
+  </div>
+
+  <div style="display:flex;justify-content:center;gap:10px;margin-top:12px">
+    <button class="btn pass" id="passBtn" aria-label="Pas geç" onclick="usePass()">PAS GEÇ (-20)</button>
+    <button class="btn restart hidden" id="quitBtn" onclick="restartGame()">ÇIKIŞ</button>
+  </div>
+</div>
+
+<div class="card hidden" id="result">
+  <div class="header">OYUN BİTTİ!</div>
+  <div class="result" id="resultText"></div>
+  <div class="controls" style="justify-content:center;margin-top:12px">
+    <button class="btn share" onclick="shareScore()">Skorunu Paylaş</button>
+    <button class="btn restart" onclick="restartGame()">Yeniden Başla</button>
+  </div>
+</div>
+
+<script>
+/* ---------- KELIMELER ---------- */
+const concepts = [
+  { word: "AHLAK", hint: "Yaratılıştan gelen huy ve davranışlar." },
+  { word: "İLETİŞİM", hint: "İnsanlar arası bağlar." },
+  { word: "ADALET", hint: "Herkese hakkını vermek." },
+  { word: "İNTERNET", hint: "Dünyayı birbirine bağlayan ağ." },
+  { word: "BAĞIMLILIK", hint: "Kontrol edilemeyen alışkanlıklar." },
+  { word: "HUCURAT", hint: "Kur’an’da ahlaki ilkelere dair bir sure." },
+  { word: "DİJİTAL", hint: "Teknolojiyle dönüşüm." }, 
+  { word: "MAHREMİYET", hint: "Kişisel sınırlar." },
+  { word: "TEKNOLOJİ", hint: "İnsan hayatını kolaylaştıran araçlar." }
+];
+
+/* ---------- OYUN DURUMLARI ---------- */
+let current = 0;
+let passesLeft = 2;
+let timer = null;
+let startTime = 0;
+const QUESTION_SECONDS = 15;
+
+let audioCtx = null;
+let loopGain = null;
+let loopSources = []; // store oscillators/nodes to stop
+let lettersDiv = null;
+
+const intro = document.getElementById('intro');
+const game = document.getElementById('game');
+const result = document.getElementById('result');
+const hintEl = document.getElementById('hint');
+const timerEl = document.getElementById('timer');
+const progress = document.getElementById('progress');
+const counter = document.getElementById('counter');
+const passInfo = document.getElementById('passInfo');
+const passBtn = document.getElementById('passBtn');
+const resultText = document.getElementById('resultText');
+const startBtn = document.getElementById('startBtn');
+lettersDiv = document.getElementById('letters');
+
+/* Kaydedilen puan/durum bilgileri (ayrıntılı rapor) */
+let perQuestionStats = []; // her soru için: {word, correctLetters, letterPoints, completionBonus, earlyBonus, penalty, elapsed}
+
+/* Toplam puan */
+let score = 0;
+
+/* ---------- SESLER (WebAudio) ---------- */
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+/* Yumuşak background pad loop — artırılmış duyulabilirlik */
+function startLoop() {
+  ensureAudioCtx();
+  stopLoop(); // varsa temizle
+
+  loopGain = audioCtx.createGain();
+  loopGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+
+  // Bas pad (sürekli düşük frekans)
+  const o1 = audioCtx.createOscillator();
+  o1.type = 'sine';
+  o1.frequency.value = 82; // düşük, hissedilir ancak rahatsız etmez
+  const g1 = audioCtx.createGain();
+  g1.gain.value = 0.045;
+
+  // Yumuşak üst armonik
+  const o2 = audioCtx.createOscillator();
+  o2.type = 'sine';
+  o2.frequency.value = 220;
+  const g2 = audioCtx.createGain();
+  g2.gain.value = 0.02;
+
+  // hafif chorus-ish effect: ikinci detune
+  const o3 = audioCtx.createOscillator();
+  o3.type = 'sine';
+  o3.frequency.value = 110;
+  const g3 = audioCtx.createGain();
+  g3.gain.value = 0.015;
+
+  // düşük geçiren filtre ile tizleri azaltıyoruz
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1200;
+
+  o1.connect(g1); g1.connect(loopGain);
+  o2.connect(g2); g2.connect(loopGain);
+  o3.connect(g3); g3.connect(loopGain);
+  loopGain.connect(lp); lp.connect(audioCtx.destination);
+
+  // başlat
+  o1.start();
+  o2.start();
+  o3.start();
+
+  // daha duyulur yapmak için hafif fade-in
+  loopGain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 0.6);
+
+  loopSources = [o1, o2, o3, lp, loopGain];
+}
+
+/* Loop'u durdur */
+function stopLoop(){
+  if (!audioCtx || !loopSources.length) return;
+  try{
+    // fade out
+    loopGain.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + 0.2);
+    setTimeout(() => {
+      try{ loopSources.forEach(n => { if (n && n.stop) n.stop(); }); }catch(e){}
+      try{ loopGain.disconnect(); }catch(e){}
+    }, 260);
+  }catch(e){}
+  loopSources = [];
+  loopGain = null;
+}
+
+/* success: parlak chime (kısa) */
+function playSuccess(){
+  ensureAudioCtx();
+  const now = audioCtx.currentTime;
+  const freqs = [880, 1180, 1480];
+  freqs.forEach((f,i) => {
+    const o = audioCtx.createOscillator();
+    o.type = 'sine';
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0, now + i*0.06);
+    g.gain.linearRampToValueAtTime(0.16, now + i*0.06 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, now + i*0.06 + 0.32);
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2200;
+    o.connect(g); g.connect(lp); lp.connect(audioCtx.destination);
+    o.frequency.setValueAtTime(f, now + i*0.06);
+    o.start(now + i*0.06);
+    o.stop(now + i*0.06 + 0.34);
+  });
+}
+
+/* "Dank" vuruşu: kısa, derin, perkusif bir hit */
+function playDankHit(){
+  ensureAudioCtx();
+  const now = audioCtx.currentTime;
+  // ana bas hit
+  const o = audioCtx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(120, now);
+  o.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.linearRampToValueAtTime(0.9, now + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+
+  // kısa klik vuruşu
+  const clickBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.03, audioCtx.sampleRate);
+  const data = clickBuf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    // yüksek enerjili kısa atak
+    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  }
+  const click = audioCtx.createBufferSource();
+  click.buffer = clickBuf;
+  const clickGain = audioCtx.createGain();
+  clickGain.gain.setValueAtTime(0.12, now);
+  click.connect(clickGain); clickGain.connect(audioCtx.destination);
+
+  // filtreleyelim (kaba ama punchy)
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1200;
+
+  o.connect(g); g.connect(lp); lp.connect(audioCtx.destination);
+  clickGain.connect(lp);
+
+  o.start(now);
+  o.stop(now + 0.26);
+  click.start(now);
+  click.stop(now + 0.03);
+}
+
+/* eski fail yerine daha "dank" bir vuruş kullan */
+function playFail(){
+  playDankHit();
+}
+
+/* ---------- OYUN AKIŞI ---------- */
+startBtn.addEventListener('click', () => {
+  ensureAudioCtx();
+  // kullanıcı etkileşimi garantile
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  // küçük başlatma tık sesi (opsiyonel)
+  startGame();
+});
+
+function startGame(){
+  intro.classList.add('hidden');
+  result.classList.add('hidden');
+  game.classList.remove('hidden');
+  current = 0;
+  passesLeft = 2;
+  perQuestionStats = [];
+  score = 0;
+  updatePassButton();
+  startLoop();
+  loadQuestion();
+}
+
+/* Harfleri tek satıra sığdırmak için ölçek hesaplama */
+function fitLettersToRow(){
+  const wrap = lettersDiv.parentElement;
+  const wrapW = wrap.clientWidth - 20;
+  const letters = Array.from(lettersDiv.children);
+  if (!letters.length) return;
+  const singleWidth = parseFloat(getComputedStyle(letters[0]).getPropertyValue('--size')) || 56;
+  const gap = 10;
+  const totalNatural = letters.length * singleWidth + Math.max(0, letters.length - 1) * gap;
+  let scale = 1;
+  if (totalNatural > wrapW) {
+    scale = wrapW / totalNatural;
+    scale = Math.max(scale, 0.45);
+  }
+  lettersDiv.style.transform = `scale(${scale})`;
+  lettersDiv.style.transformOrigin = 'left center';
+}
+
+/* Soru yükle */
+function loadQuestion(){
+  if (current >= concepts.length) { endGame(); return; }
+  const c = concepts[current];
+  hintEl.textContent = `İpucu: ${c.hint}`;
+  counter.textContent = `${current+1}/${concepts.length}`;
+  passInfo.textContent = `Pas: ${passesLeft}`;
+  lettersDiv.innerHTML = '';
+
+  // karıştır (her yüklemede yeniden)
+  const letters = c.word.split('');
+  const shuffled = shuffleArray([...letters]);
+
+  shuffled.forEach(letter => {
+    const div = document.createElement('div');
+    div.className = 'letter';
+    div.setAttribute('role','listitem');
+    div.textContent = letter;
+    div.draggable = true;
+
+    div.ondragstart = (e) => { dragged = div; setTimeout(()=>div.style.opacity='0.5',0); };
+    div.ondragenter = (e) => { e.preventDefault(); if (div!==dragged) div.classList.add('drag-over'); };
+    div.ondragleave = () => { div.classList.remove('drag-over'); };
+    div.ondragover = (e) => e.preventDefault();
+    div.ondrop = (e) => {
+      e.preventDefault();
+      if (!dragged || div===dragged) return;
+      const all = Array.from(lettersDiv.children);
+      const from = all.indexOf(dragged);
+      const to = all.indexOf(div);
+      if (from < to) lettersDiv.insertBefore(dragged, div.nextSibling);
+      else lettersDiv.insertBefore(dragged, div);
+      dragged.style.opacity = '1';
+      all.forEach(el=>el.classList.remove('drag-over'));
+      dragged = null;
+      setTimeout(()=>checkIfComplete(),80);
+    };
+
+    div.onclick = () => {
+      const next = div.nextElementSibling;
+      if (next) {
+        lettersDiv.insertBefore(next, div);
+        setTimeout(()=>checkIfComplete(),80);
+      }
+    };
+
+    lettersDiv.appendChild(div);
+  });
+
+  setTimeout(fitLettersToRow,40);
+  window.addEventListener('resize', fitLettersToRow);
+
+  // soru başlangıcı için timer başlat
+  startTimer(QUESTION_SECONDS);
+}
+
+/* Timer */
+function startTimer(seconds){
+  let timeLeft = seconds;
+  startTime = Date.now();
+  timerEl.textContent = timeLeft;
+  progress.style.width = '100%';
+  clearInterval(timer);
+  timer = setInterval(()=>{
+    timeLeft--;
+    timerEl.textContent = timeLeft;
+    progress.style.width = `${(timeLeft/seconds)*100}%`;
+    if (timeLeft <= 5) timerEl.style.color = '#ef4444'; else timerEl.style.color = '#d97706';
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      // süre doldu: kelime tamamlanmamışsa timeout işlemi
+      handleTimeout();
+    }
+  },1000);
+}
+
+/* Doğru yerleştirilen harf sayısını hesapla (mevcut pozisyon vs hedef) */
+function countCorrectLettersForCurrent(){
+  const target = concepts[current].word;
+  const currentArr = Array.from(lettersDiv.children).map(l => l.textContent);
+  let cnt = 0;
+  for (let i=0;i<Math.min(target.length, currentArr.length); i++){
+    if (currentArr[i] === target[i]) cnt++;
+  }
+  return cnt;
+}
+
+/* Cevap tamamlandı mı kontrolü */
+function checkIfComplete(){
+  const userAnswer = Array.from(lettersDiv.children).map(l=>l.textContent).join('');
+  const correct = concepts[current].word;
+  if (userAnswer === correct) {
+    // tamamlandı
+    clearInterval(timer);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    // kalan saniye (erken bitirme)
+    const remaining = Math.max(0, QUESTION_SECONDS - elapsed);
+    const correctLetters = correct.length; // tüm harfler doğru
+    const letterPoints = correctLetters * 3;
+    const completionBonus = 10;
+    const earlyBonus = remaining; // +1 per remaining second
+    const penalty = 0;
+    perQuestionStats.push({
+      word: correct,
+      correctLetters,
+      letterPoints,
+      completionBonus,
+      earlyBonus,
+      penalty,
+      elapsed
+    });
+    score += letterPoints + completionBonus + earlyBonus;
+    // görsel vurgu
+    lettersDiv.querySelectorAll('.letter').forEach(l=>l.classList.add('correct'));
+    playSuccess();
+    // sonraki
+    setTimeout(()=> { current++; if (current < concepts.length) loadQuestion(); else endGame(); }, 700);
+  }
+}
+
+/* Pas kullanma */
+function usePass(){
+  if (passesLeft <= 0) return;
+  clearInterval(timer);
+  const elapsed = Math.round((Date.now() - startTime) / 1000);
+  const correctLetters = countCorrectLettersForCurrent();
+  const letterPoints = correctLetters * 3;
+  const completionBonus = 0;
+  const earlyBonus = 0;
+  const penalty = -20; // PAS: -20
+  perQuestionStats.push({
+    word: concepts[current].word,
+    correctLetters,
+    letterPoints,
+    completionBonus,
+    earlyBonus,
+    penalty,
+    elapsed
+  });
+  score += letterPoints + penalty;
+  passesLeft--;
+  updatePassButton();
+  playFail();
+  current++;
+  setTimeout(()=> { if (current < concepts.length) loadQuestion(); else endGame(); }, 380);
+}
+
+/* Timeout handling (süre doldu) */
+function handleTimeout(){
+  const elapsed = QUESTION_SECONDS;
+  const correctLetters = countCorrectLettersForCurrent();
+  const letterPoints = correctLetters * 3;
+  const completionBonus = 0;
+  const earlyBonus = 0;
+  const penalty = -10; // süre dolduğunda -10
+  perQuestionStats.push({
+    word: concepts[current].word,
+    correctLetters,
+    letterPoints,
+    completionBonus,
+    earlyBonus,
+    penalty,
+    elapsed
+  });
+  score += letterPoints + penalty;
+  playFail();
+  current++;
+  setTimeout(()=> { if (current < concepts.length) loadQuestion(); else endGame(); }, 500);
+}
+
+/* Pass buton güncelle */
+function updatePassButton(){
+  passInfo.textContent = `Pas: ${passesLeft}`;
+  passBtn.disabled = passesLeft === 0;
+  passBtn.style.opacity = passesLeft === 0 ? '0.6' : '1';
+}
+
+/* Oyun bitişi — detaylı döküm göster */
+function endGame(){
+  stopLoop();
+  game.classList.add('hidden');
+  result.classList.remove('hidden');
+
+  // build detaylı tablo ve toplam hesaplama
+  let html = `<strong>Detaylı Puan Dökümü</strong><br><br>`;
+  html += `<table class="score-table"><thead><tr><th>#</th><th>Kelim e</th><th>Doğru Harfler</th><th>Harf Puanı</th><th>Bonus</th><th>Ceza</th><th>Süre (s)</th><th>Satır Toplam</th></tr></thead><tbody>`;
+  let running = 0;
+  perQuestionStats.forEach((s,i) => {
+    const bonus = (s.completionBonus || 0) + (s.earlyBonus || 0);
+    const penalty = (s.penalty || 0);
+    const lineTotal = (s.letterPoints || 0) + bonus + penalty;
+    running += lineTotal;
+    html += `<tr><td>${i+1}</td><td>${s.word}</td><td>${s.correctLetters}</td><td>${s.letterPoints}</td><td>${bonus}</td><td>${penalty}</td><td>${s.elapsed}</td><td>${lineTotal}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+
+  html += `<br><strong>Genel Toplam Puan:</strong> <span style="font-size:1.25rem;font-weight:800">${score}</span><br><br>`;
+  html += `Kullanılan Pas: <strong>${2 - passesLeft}</strong> (her pas -20 puan dahil edildi)<br>`;
+
+  resultText.innerHTML = html;
+}
+
+/* Skoru paylaş */
+function shareScore(){
+  const text = `Anagram Etkinliği: ${score} puan! ${2 - passesLeft} pas kullandım.`;
+  if (navigator.share) {
+    navigator.share({ title: 'Anagram Skoru', text }).catch(()=>{ alert('Paylaşım iptal edildi.'); });
+  } else {
+    prompt('Skorunu kopyala:', text);
+  }
+}
+
+/* Yeniden başla (intro'ya döner) */
+function restartGame(){
+  result.classList.add('hidden');
+  game.classList.add('hidden');
+  intro.classList.remove('hidden');
+  stopLoop();
+}
+
+/* ---------- Yardımcılar ---------- */
+function shuffleArray(arr){
+  for (let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+/* correct count reuse requires current DOM; define dragged var */
+let dragged = null;
+
+/* resize ile fit et (debounce) */
+let resizeTimeout = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(fitLettersToRow, 120);
+});
+</script>
+
+</body>
+</html>
